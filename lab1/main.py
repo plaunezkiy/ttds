@@ -1,15 +1,15 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from nltk.stem import PorterStemmer
+from utils.processing import tokenize_text, process_tokens, count_tokens, generate_vocab_growth_data
 
 
-ps = PorterStemmer()
 files = [
     "bible.txt",
     "quran.txt",
     "abstracts.wiki.txt",
 ]
+
 
 zipfs = [
     10000, 10000, 10000
@@ -18,39 +18,29 @@ heaps = [
     [7, 0.54], [10, 0.54], [70, 0.54]
 ]
 
-
+# setup for figs
 fig = plt.figure(figsize=(12, 8))
 subfigs = fig.subfigures(nrows=len(files), ncols=1)
 
-# load stopwords
-with open("data/stopwords.txt", "r") as stopwords_file:
-    stopwords = stopwords_file.read().strip().split("\n")
-
 # go over files, drop stopwords and normalize
-for i, file in enumerate(files):
-    token_counts_file = f"output/token_counts_{file}"
-    with open(token_counts_file, "r") as counts_file:
-        data = counts_file.read()
-        counts = list(map(lambda r: r.strip().split(), data.strip().split("\n")))
+for i, filename in enumerate(files):
+    file_path = f"data/documents/{filename}"
+    print(f"processing: {file_path}")
+    with open(file_path, "r", encoding="utf-8") as file:
+        file_text = file.read()
+        print("Tokenizing")
+        tokens = tokenize_text(file_text)
+        print("Processing")
+        processed_tokens = process_tokens(tokens)
+        print("Counting")
+        counts = count_tokens(processed_tokens)
     # load the counts into a dataframe
-    df = pd.DataFrame(counts, columns=["token_count", "token"])
-    # cast str counts to ints
-    df.token_count = df.token_count.apply(lambda c: int(c))
-    # drop stopwords
-    no_stopwords_df = df[~df["token"].isin(stopwords)]
-
-    # normalize (replace the word with its stemmed form)
-    no_stopwords_df.token.apply(lambda token: ps.stem(token or " "))
-    # 
-    # stemmed_df = no_stopwords_df[no_stopwords_df.token.duplicated()].groupby("token").token_count.sum()
-    stemmed_df = no_stopwords_df[no_stopwords_df.token.duplicated()].groupby("token").token_count.sum()
-    
-    print(no_stopwords_df.token.duplicated().any())
+    df = pd.DataFrame.from_dict(counts, orient='index', columns=["token_count"])
 
     df.sort_values(by="token_count", ascending=False, inplace=True)
     df = df.reset_index()
-    
-    subfigs[i].suptitle(file)
+
+    subfigs[i].suptitle(filename)
     axs = subfigs[i].subplots(nrows=1, ncols=4)
     
     # Zipf's curve
@@ -85,10 +75,11 @@ for i, file in enumerate(files):
     axs[2].set_xlabel("digit")
     axs[2].set_ylabel("log(frequency)")
     axs[2].set_yscale("log")
-
+    print("About to generate")
     # Vocab growth
-    vocab_df = pd.read_csv(f"output/vocab_{file}")
-    # vocab_df.plot(x=vocab_df.n, y=vocab_df.vocab_size, ax=axs[3])
+    vocab_data = generate_vocab_growth_data(tokens, 100)
+    vocab_df = pd.DataFrame(vocab_data, columns=["n", "vocab_size"])
+    
     k, b = heaps[i]
     x = np.linspace(0, max(vocab_df.n))
     axs[3].plot(vocab_df.n, vocab_df.vocab_size)
