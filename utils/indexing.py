@@ -1,6 +1,13 @@
 import re
 from utils.processing import tokenize_text, remove_stopwords, normalize
 
+"""
+TODO: think about a more efficient way of storing and loading
+the serialized index. Currently reading line by line from a txt file
+Supposedely efficient in terms of memory for file IO
+
+TODO: Implement delta encoding for more efficient document indexing
+"""
 
 class InvertedFrequencyIndex:
     """
