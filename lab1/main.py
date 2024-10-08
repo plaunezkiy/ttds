@@ -10,12 +10,8 @@ files = [
     "abstracts.wiki.txt",
 ]
 
-
-zipfs = [
-    10000, 10000, 10000
-]
 heaps = [
-    [7, 0.54], [10, 0.54], [70, 0.54]
+    [11.65, 0.54], [3.22, 0.68], [2.89, 0.74]
 ]
 
 # setup for figs
@@ -27,13 +23,15 @@ for i, filename in enumerate(files):
     file_path = f"data/documents/{filename}"
     print(f"processing: {file_path}")
     with open(file_path, "r", encoding="utf-8") as file:
-        file_text = file.read()
-        print("Tokenizing")
-        tokens = tokenize_text(file_text)
+        processed_tokens = []
         print("Processing")
-        processed_tokens = process_tokens(tokens)
-        print("Counting")
-        counts = count_tokens(processed_tokens)
+        # go line by line for efficiency
+        for line in file:
+            line_tokens = tokenize_text(line)
+            line_tokens = process_tokens(line_tokens)
+            processed_tokens.extend(line_tokens)
+    print("Counting")
+    counts = count_tokens(processed_tokens)
     # load the counts into a dataframe
     df = pd.DataFrame.from_dict(counts, orient='index', columns=["token_count"])
 
@@ -44,13 +42,10 @@ for i, filename in enumerate(files):
     axs = subfigs[i].subplots(nrows=1, ncols=4)
     
     # Zipf's curve
-    k = zipfs[i]
     x = np.linspace(1, max(df.index))
     axs[0].set_title("Zipf's Law")
     axs[0].plot(df.index, df.token_count)
     axs[0].grid()
-    axs[0].plot(x, k / x)
-    axs[0].legend(["Observed", "$f={0}/r$".format(k)])
     axs[0].set_xlabel("log(rank)")
     axs[0].set_ylabel("log(frequency)")
     axs[0].set_xscale("log")
@@ -77,9 +72,9 @@ for i, filename in enumerate(files):
     axs[2].set_yscale("log")
     print("About to generate")
     # Vocab growth
-    vocab_data = generate_vocab_growth_data(tokens, 100)
+    vocab_data = generate_vocab_growth_data(processed_tokens, 100)
     vocab_df = pd.DataFrame(vocab_data, columns=["n", "vocab_size"])
-    
+    print(vocab_df)
     k, b = heaps[i]
     x = np.linspace(0, max(vocab_df.n))
     axs[3].plot(vocab_df.n, vocab_df.vocab_size)

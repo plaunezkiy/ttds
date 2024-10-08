@@ -1,20 +1,21 @@
 import xml.etree.ElementTree as ET
-from utils.xmlparser import XmlDictConfig
+from utils.xmlparser import Document
 from utils.indexing import InvertedFrequencyIndex
+import json
 
 
 index = InvertedFrequencyIndex()
 
-def load_collection(collection_name="sample.xml"):
+def load_collection(collection_name="trec.sample.xml"):
     # collection = "sample.xml"
     tree = ET.parse(f"data/collections/{collection_name}")
     root = tree.getroot()
-    docs = [XmlDictConfig(child) for child in root]
-
+    docs = [Document(child) for child in root]
     for doc in docs:
-        doc_id = int(doc.get("DOCNO", None))
-        doc_text = doc.get("Text", "").strip()
-        if not doc_id or not doc_text:
-            print(f"Error, empty entry")
+        if not doc.docno or not doc.text:
+            print(f"Error, empty entry", doc.docno, doc.text[:10])
             continue
-        index.add_document_to_index(doc_id, doc_text)
+        index.add_document_to_index(int(doc.docno), doc.text)
+
+
+load_collection("trec.sample.xml")

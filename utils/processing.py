@@ -6,7 +6,7 @@ import re
 alphanum = r"[a-zA-Z0-9_]*"
 non_alphanum = r"[^a-zA-Z0-9_]"
 
-ps = PorterStemmer()
+stemmer = PorterStemmer()
 # load stopwords
 with open("./data/stopwords.txt", "r") as stopwords_file:
     stopwords = set(stopwords_file.read().strip().split("\n"))
@@ -30,7 +30,7 @@ def remove_stopwords(collection: List[str]) -> List[str]:
 
 
 def normalize(collection: List[str]) -> List[str]:
-    return list(map(lambda token: ps.stem(token), collection))
+    return list(map(lambda token: stemmer.stem(token), collection))
 
 
 def count_tokens(collection: List[str]):
@@ -41,9 +41,7 @@ def count_tokens(collection: List[str]):
 
 
 def process_tokens(tokens: List[str]):
-    print("Removing stopwords")
     ts = remove_stopwords(tokens)
-    print("Normalizing")
     ts = normalize(ts)
     return ts
 
