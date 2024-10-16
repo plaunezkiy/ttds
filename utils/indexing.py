@@ -49,7 +49,8 @@ class InvertedFrequencyIndex:
                 document_id: [position]
             }
 
-    def proximity_search(self)
+    def proximity_search(self):
+        return
 
     def search(self, query):
         query = "income AND NOT taxes"
