@@ -49,7 +49,14 @@ class InvertedFrequencyIndex:
                 document_id: [position]
             }
 
+    def proximity_search(self)
+
     def search(self, query):
+        query = "income AND NOT taxes"
+        # Boolean search (AND, OR, NOT)
+        # phrase search ("exact match")
+        # proximity search pos(term2) – pos(term1) < |w| -> #5(term1,term2)
+        # ranked IR search based on TFIDF
         return
     
     def save(self, index_path):
