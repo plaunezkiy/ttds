@@ -20,15 +20,15 @@ class InvertedFrequencyIndex:
     doc_positions_regex = re.compile("\t(.*?):\s(.*)")
     
     terms: dict
-    document_processing_pipeline: list
+    text_processing_pipeline: list
 
     def __init__(self):
         self.terms = {}
-        self.document_processing_pipeline = [tokenize_text, remove_stopwords, normalize]
+        self.text_processing_pipeline = [tokenize_text, remove_stopwords, normalize]
     
     def add_document_to_index(self, document_id, text):
         tokens = text
-        for preprocessing_func in self.document_processing_pipeline:
+        for preprocessing_func in self.text_processing_pipeline:
             tokens = preprocessing_func(tokens)
         
         for position, token in enumerate(tokens):
@@ -60,7 +60,7 @@ class InvertedFrequencyIndex:
         # ranked IR search based on TFIDF
         return
     
-    def save(self, index_path):
+    def save_to_file(self, index_path):
         """
         Stores the index in the serializable format
         
@@ -79,7 +79,7 @@ class InvertedFrequencyIndex:
                 term_index_data = f"{term}:\n{doc_freqs}\n\n"
                 index_file.write(term_index_data)
     
-    def load(self, index_path):
+    def load_from_file(self, index_path):
         """
         Loads the serialized index line by line (for efficiency)
         """
@@ -107,4 +107,4 @@ class InvertedFrequencyIndex:
 
 if __name__ == "__main__":
     index = InvertedFrequencyIndex()
-    index.load("data/collections/collection.index.txt")
+    index.load_from_file("data/collections/collection.index.txt")

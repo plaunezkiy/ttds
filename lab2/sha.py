@@ -1,5 +1,5 @@
 import re
-exp = '"middle east" AND peace'
+exp = '"middle east" AND (peace OR war)'
 
 operators = {
     "AND": all,
@@ -18,10 +18,14 @@ def evaluate(s):
         negated = True
         s = s.split("NOT")[1]
     # proximity search
-    if re.extract("#n(t1,t2)") as n, t1, t2:
+    proximity_regex = r"#(\d+)\((\w+),\s?(\w+)\)"
+    phrase_regex = r"\"(.*)\""
+    if re.search(proximity_regex, s):
+        n, t1, t2 = re.findall(proximity_regex, s)[0]
         value = index.proximity_search(document, t1, t2, n)
     # phrase search
-    elif re.extract('\"exact_string\"') as exact_string:
+    elif re.search(phrase_regex, s):
+        exact_query = re.findall(phrase_regex, s)[0]
         value = index.exact_match(document, exact_string)
         # OR
         # proximity search n=1
@@ -33,25 +37,30 @@ def evaluate(s):
     return not value if negated else value
 
 def evaluate_string(exp):
+    operator = None
     if "AND" in exp:
-        exp.split("AND")
-
-        all(
-            map(evaluate, exp)
-        )
+        operator = all
+        exp = exp.split("AND")
 
     elif "OR" in exp:
-        exp.split("OR")
-    return
+        operator = any
+        exp = exp.split("OR")
+    else:
+        return evaluate(exp)
+    return operator(map(evaluate, exp))
 
 evaluate_string(exp)
 
-# def evaluate_string(exp):
-#    """Shunting yard implementation"""
-#     exp.replace("(_?", "( ")
-#     exp.replace("_?)", " )")
+# def peek(a):
+#     return a[-1] if a else None
+# 
+# def parse_string(exp):
+#     """Shunting yard implementation"""
+#     exp = re.sub("\(\s?", "( ", exp)
+#     exp = re.sub("\s?\)", " )", exp)
 #     els = exp.split(" ")
 #     values, operators = [], []
+#     print(els)
 
 #     for el in els:
 #         if is_operator(el):
@@ -64,10 +73,12 @@ evaluate_string(exp)
 #                 continue
 #             operators.pop()
 #         else:
-#             while peek(operators) and peek(operators) not in "()" and greater_precedence(peek(operators), el):
-#                 operator = operators.pop()
-#                 right = values.pop()
-#                 left = values.pop()
-#                 apply_operator(operators, values)
+#             # while peek(operators) and peek(operators) not in "()" and greater_precedence(peek(operators), el):
+#             #     operator = operators.pop()
+#             #     right = values.pop()
+#             #     left = values.pop()
+#             #     apply_operator(operators, values)
 #             values.append(el)
-#     return
+#     return operators, values
+
+# print(parse_string(exp))
