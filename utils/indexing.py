@@ -1,7 +1,9 @@
 import re
 from math import log10
 from typing import Set
+import xml.etree.ElementTree as ET
 from utils.processing import tokenize_text, remove_stopwords, normalize
+from utils.xmlparser import Document
 
 """
 TODO: think about a more efficient way of storing and loading
@@ -180,7 +182,6 @@ class InvertedFrequencyIndex:
             operator = set.union
             query = query.split("OR")
         else:
-            print(query)
             return sorted(self.evaluate_expression(query))
         return sorted(operator(*map(self.evaluate_expression, query)))
 
@@ -226,6 +227,20 @@ class InvertedFrequencyIndex:
         # sorted
         return sorted(ranked_docs, key=lambda t: t[1], reverse=True)
 
+    def load_and_index_collection(self, collection_path):
+        """
+        Loads and indexes a collection of documents from XML file
+        """
+        tree = ET.parse(collection_path)
+        root = tree.getroot()
+        docs = [Document(child) for child in root]
+        for doc in docs:
+            if not doc.docno or not doc.text:
+                print(f"Error, missing data for the entry", doc.docno, doc.text[:10])
+                continue
+            document_content = doc.headline + doc.text
+            self.add_document_to_index(int(doc.docno), document_content)
+
     def save_to_file(self, index_path):
         """
         Stores the index in the serializable format
@@ -247,7 +262,7 @@ class InvertedFrequencyIndex:
     
     def load_from_file(self, index_path):
         """
-        Loads the serialized index line by line (for efficiency)
+        Loads from the serialized index file line by line (for efficiency)
         """
         with open(index_path, "r") as index_file:
             term = None
@@ -257,7 +272,7 @@ class InvertedFrequencyIndex:
                     # switch to new term
                     term = None
                     continue
-                # if the term is not set, we are starting to read the new entry
+                # if the term is not set, we are starting the new entry
                 # and thus it needs to be set
                 if term == None:
                     result = self.term_regex.search(index_line)
