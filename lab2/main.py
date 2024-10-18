@@ -21,9 +21,12 @@ def load_collection(collection_name="trec.sample.xml"):
 
 if __name__ == "__main__":
     load_collection("trec.sample.xml")
-    query = input("Q:")
-    while True:
-        results = index.search(query)
-        print(f"({len(results)} matches)")
-        print(results)
-        query = input("Q:")
+
+    with open("lab2/boolean.queries.txt", "r") as q_file:
+        with open("lab2/boolean.results.txt", "w") as o_file:
+            for query_data in q_file:
+                query_data = query_data.strip()
+                q_number, query = query_data.split(" ", 1)
+                results = index.search(query)
+                for doc_id in results:
+                    o_file.write(f"{q_number[1:-1]},{doc_id}\n")

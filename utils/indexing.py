@@ -1,4 +1,5 @@
 import re
+from math import log10
 from typing import Set
 from utils.processing import tokenize_text, remove_stopwords, normalize
 
@@ -7,7 +8,7 @@ TODO: think about a more efficient way of storing and loading
 the serialized index. Currently reading line by line from a txt file
 Supposedely efficient in terms of memory for file IO
 
-TODO: Implement delta encoding for more efficient document indexing
+TODO: Implement delta encoding for more memory efficient term-in-doc indexing
 """
 
 class InvertedFrequencyIndex:
@@ -33,7 +34,6 @@ class InvertedFrequencyIndex:
         tokens = text
         for preprocessing_func in self.text_processing_pipeline:
             tokens = preprocessing_func(tokens)
-        
         for position, token in enumerate(tokens):
             self.add_term_to_index(token, document_id, position+1)
         self.doc_ids.add(document_id)
@@ -60,20 +60,40 @@ class InvertedFrequencyIndex:
         return True if self.terms[term][doc_id] else False
 
     def term_search(self, term):
-        return self.terms[term].keys() or []
+        """
+        Returns list of documents containing the term, otherwise an empty list
+        `term` to be in processed and normalized form
+        """
+        keys = self.terms.get(term, {}).keys()
+        return set(keys)
     
-    def phrase_search(self, query, strict=False) -> Set[int]:
-        # if strict (exact match), enfore set intersection, else union over pairs
-        set_operator = set.intersection if strict else set.union
+    def phrase_search(self, query, exact=False) -> Set[int]:
+        """
+        Finds documents that contain a string of text
+        Splits the query into tokens and does proximity search over
+        each adjacent pair of tokens, if exact, only documents where pairs
+        appear sequentially will be returned.
+        Otherwise, all document with a pair occurrence are union'ed
+        """
+        # if exact (exact match), enforce set intersection, 
+        # else union over documents containing pairs
+        set_operator = set.intersection if exact else set.union
+        # converty query into tokens and process them
         query_tokens = query
         for func in self.text_processing_pipeline:
             query_tokens = func(query_tokens)
-        docs = None
+        # if no tokens (either all stopwords or or nothing provided, return)
+        if len(query_tokens) == 0:
+            return set()
+        # if 1 token left, can do simple term search
         if len(query_tokens) == 1:
             return self.term_search(query_tokens[0])
+        # otherwise, zip pairs and do proximity search for each pair
+        docs = set()
         for pair in zip(query_tokens, query_tokens[1:]):
             result = self.proximity_search(*pair, n=1)
             # if not the first pass, apply operator
+            # avoids difference of an empty set() and nonempty on the first pass
             if docs:
                 docs = set_operator(docs, result)
             else:
@@ -82,8 +102,8 @@ class InvertedFrequencyIndex:
     
     def check_terms_close_in_document(self, doc_id, term1, term2, n) -> bool:
         # term occurrences in a document
-        i1 = self.terms[term1][doc_id] or []
-        i2 = self.terms[term2][doc_id] or []
+        i1 = self.terms.get(term1, {}).get(doc_id, [])
+        i2 = self.terms.get(term2, {}).get(doc_id, [])
         # list pointers
         i = 0
         j = 0
@@ -101,11 +121,12 @@ class InvertedFrequencyIndex:
         Performs proximity search over the index
         Returns relevant documents, where both term1 and term2
         are present, and the distance between them is <= n
+
+        term1 and term2 are to be in a processed normalized form
         """
-        print(term1, term2)
         # position lists
-        d1 = self.terms[term1] if term1 in self.terms else {}
-        d2 = self.terms[term2] if term2 in self.terms else {}
+        d1 = self.terms.get(term1, {})
+        d2 = self.terms.get(term2, {})
         relevant_doc_ids = set()
         for doc_id in d1.keys():
             # if doc_id not common, continue
@@ -120,18 +141,22 @@ class InvertedFrequencyIndex:
         docs = set()
         if "NOT" in exp:
             negated = True
-            exp = re.findall(r"NOT\s?", exp)[0]
+            exp = re.findall(r"NOT\s?(.*)", exp)[0]
         # #int(str,str)
         proximity_regex = r"#(\d+)\((\w+),\s?(\w+)\)"
         # "str"
         phrase_regex = r"\"(.*)\""
         if re.search(proximity_regex, exp):
             n, t1, t2 = re.findall(proximity_regex, exp)[0]
-            docs = self.proximity_search(t1, t2, n)
+            tokens = [t1, t2]
+            # skip tokenization
+            for preproc_func in self.text_processing_pipeline[1:]:
+                tokens = preproc_func(tokens)
+            docs = self.proximity_search(*tokens, int(n))
         # phrase search
         elif re.search(phrase_regex, exp):
             exact_query = re.findall(phrase_regex, exp)[0]
-            docs = self.phrase_search(exact_query, strict=True)
+            docs = self.phrase_search(exact_query, exact=True)
         # regular search
         else:
             docs = self.phrase_search(exp)
@@ -155,9 +180,52 @@ class InvertedFrequencyIndex:
             operator = set.union
             query = query.split("OR")
         else:
+            print(query)
             return sorted(self.evaluate_expression(query))
         return sorted(operator(*map(self.evaluate_expression, query)))
+
+    def get_tf(self, term, doc_id):
+        """
+        Calculates the term frequency in a document
+        ie how many times term appeared in a document
+        """
+        fs = self.terms.get(term, {}).get(doc_id, [])
+        return len(fs)
     
+    def get_df(self, term):
+        """
+        Calculates how many documents the term appeared in.
+        """
+        docs = self.terms.get(term, {})
+        return len(docs.keys())
+    
+    def ranked_retrieval(self, query):
+        # preprocess the query
+        query_tokens = query
+        for preproc_func in self.text_processing_pipeline:
+            query_tokens = preproc_func(query_tokens)
+        # 
+        docs = set.union(*[self.term_search(term) for term in query_tokens])
+        ranked_docs = []
+        # 
+        for doc_id in docs:
+            doc_score = 0
+            for term in query_tokens:
+                # term-doc frequency
+                tf = self.get_tf(term, doc_id)
+                if tf == 0:
+                    w = 0
+                else:
+                    # idf over entire collection
+                    idf = log10(len(self.doc_ids) / self.get_df(term))
+                    w = (1 + log10(tf)) * idf
+                doc_score += w
+            ranked_docs.append((doc_id, doc_score))
+        # 
+        return ranked_docs
+        # sorted
+        return sorted(ranked_docs, key=lambda t: t[1], reverse=True)
+
     def save_to_file(self, index_path):
         """
         Stores the index in the serializable format
@@ -209,7 +277,7 @@ if __name__ == "__main__":
     index.load_from_file("data/collections/collection.index.txt")
     query = input("Q:")
     while True:
-        results = index.search(query)
+        results = index.ranked_retrieval(query)
         print(f"({len(results)} matches)")
-        print(results)
+        print(results, sep="\n")
         query = input("Q:")

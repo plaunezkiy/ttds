@@ -1,12 +1,12 @@
 from typing import List
-from nltk.stem import PorterStemmer
+import Stemmer
 from collections import Counter
 import re
 
 alphanum = r"[a-zA-Z0-9_]*"
 non_alphanum = r"[^a-zA-Z0-9_]"
 
-stemmer = PorterStemmer()
+stemmer = Stemmer.Stemmer('english')
 # load stopwords
 with open("./data/stopwords.txt", "r") as stopwords_file:
     stopwords = set(stopwords_file.read().strip().split("\n"))
@@ -19,7 +19,7 @@ def tokenize_text(text: str) -> List[str]:
     """
     text = text.lower()
     text = re.sub(non_alphanum, "\n", text)
-    return list(filter(lambda token: token is not None, text.split("\n")))
+    return list(filter(lambda token: bool(token), text.split("\n")))
 
 
 def remove_stopwords(collection: List[str]) -> List[str]:
@@ -30,7 +30,7 @@ def remove_stopwords(collection: List[str]) -> List[str]:
 
 
 def normalize(collection: List[str]) -> List[str]:
-    return list(map(lambda token: stemmer.stem(token), collection))
+    return list(map(lambda token: stemmer.stemWord(token), collection))
 
 
 def count_tokens(collection: List[str]):
