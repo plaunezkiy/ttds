@@ -1,4 +1,5 @@
 from typing import List
+from nltk.stem import PorterStemmer
 import Stemmer
 from collections import Counter
 import re
@@ -6,7 +7,8 @@ import re
 alphanum = r"[a-zA-Z0-9_]*"
 non_alphanum = r"[^a-zA-Z0-9_]"
 
-stemmer = Stemmer.Stemmer('english')
+# stemmer = Stemmer.Stemmer('english')
+stemmer = Stemmer.Stemmer("english")
 # load stopwords
 with open("./data/stopwords.txt", "r") as stopwords_file:
     stopwords = set(stopwords_file.read().strip().split("\n"))
