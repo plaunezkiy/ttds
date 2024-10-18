@@ -19,14 +19,14 @@ def tokenize_text(text: str) -> List[str]:
     """
     text = text.lower()
     text = re.sub(non_alphanum, "\n", text)
-    return list(filter(None, text.split("\n")))
+    return list(filter(lambda token: token is not None, text.split("\n")))
 
 
 def remove_stopwords(collection: List[str]) -> List[str]:
     """
     Drops all entries that are in the stopword list
     """
-    return list(filter(lambda token: token in stopwords, collection))
+    return list(filter(lambda token: token not in stopwords, collection))
 
 
 def normalize(collection: List[str]) -> List[str]:

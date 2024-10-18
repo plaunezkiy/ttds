@@ -58,14 +58,19 @@ class InvertedFrequencyIndex:
         check if the term is present in a given document
         """
         return True if self.terms[term][doc_id] else False
+
+    def term_search(self, term):
+        return self.terms[term].keys() or []
     
     def phrase_search(self, query, strict=False) -> Set[int]:
         # if strict (exact match), enfore set intersection, else union over pairs
         set_operator = set.intersection if strict else set.union
+        query_tokens = query
         for func in self.text_processing_pipeline:
-            query_tokens = func(query)
-        print("Query tokens", query_tokens)
+            query_tokens = func(query_tokens)
         docs = None
+        if len(query_tokens) == 1:
+            return self.term_search(query_tokens[0])
         for pair in zip(query_tokens, query_tokens[1:]):
             result = self.proximity_search(*pair, n=1)
             # if not the first pass, apply operator
@@ -77,16 +82,16 @@ class InvertedFrequencyIndex:
     
     def check_terms_close_in_document(self, doc_id, term1, term2, n) -> bool:
         # term occurrences in a document
-        i1 = self.terms[term1][doc_id]
-        i2 = self.terms[term2][doc_id]
+        i1 = self.terms[term1][doc_id] or []
+        i2 = self.terms[term2][doc_id] or []
         # list pointers
         i = 0
         j = 0
-        while i < len(i1) and j < len(i2):
+        while j < len(i2):
             # while i1 is before i2 and while the diff > n, move to next i1
-            while i1[i] < i2[j] and i2[j] - i1[i] > n:
+            while i < len(i1)-1 and i1[i] <= i2[j] and abs(i2[j] - i1[i]) > n:
                 i += 1
-            if i2[j] - i1[i] <= n:
+            if abs(i2[j] - i1[i]) <= n:
                 return True
             j += 1
         return False
@@ -99,8 +104,8 @@ class InvertedFrequencyIndex:
         """
         print(term1, term2)
         # position lists
-        d1 = self.terms[term1]
-        d2 = self.terms[term2]
+        d1 = self.terms[term1] if term1 in self.terms else {}
+        d2 = self.terms[term2] if term2 in self.terms else {}
         relevant_doc_ids = set()
         for doc_id in d1.keys():
             # if doc_id not common, continue
@@ -146,14 +151,12 @@ class InvertedFrequencyIndex:
         if "AND" in query:
             operator = set.intersection
             query = query.split("AND")
-
         elif "OR" in query:
             operator = set.union
             query = query.split("OR")
         else:
-            return self.evaluate_expression(query)
-        print(query)
-        return operator(map(self.evaluate_expression, query))
+            return sorted(self.evaluate_expression(query))
+        return sorted(operator(*map(self.evaluate_expression, query)))
     
     def save_to_file(self, index_path):
         """
@@ -206,5 +209,7 @@ if __name__ == "__main__":
     index.load_from_file("data/collections/collection.index.txt")
     query = input("Q:")
     while True:
-        print(index.search(query))
+        results = index.search(query)
+        print(f"({len(results)} matches)")
+        print(results)
         query = input("Q:")

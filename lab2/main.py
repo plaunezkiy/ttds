@@ -15,7 +15,15 @@ def load_collection(collection_name="trec.sample.xml"):
         if not doc.docno or not doc.text:
             print(f"Error, empty entry", doc.docno, doc.text[:10])
             continue
-        index.add_document_to_index(int(doc.docno), doc.text)
+        document_content = doc.headline + doc.text
+        index.add_document_to_index(int(doc.docno), document_content)
 
 
-load_collection("trec.sample.xml")
+if __name__ == "__main__":
+    load_collection("trec.sample.xml")
+    query = input("Q:")
+    while True:
+        results = index.search(query)
+        print(f"({len(results)} matches)")
+        print(results)
+        query = input("Q:")
