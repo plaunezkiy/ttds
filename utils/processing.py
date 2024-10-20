@@ -3,8 +3,8 @@ from nltk.stem import PorterStemmer
 from collections import Counter
 import re
 
-alphanum = r"[a-zA-Z0-9_]*"
-non_alphanum = r"[^a-zA-Z0-9_]"
+alphanum = r"[a-zA-Z0-9_-]*"
+non_alphanum = r"[^a-zA-Z0-9_-]"
 
 # stemmer = Stemmer.Stemmer('english')
 stemmer = PorterStemmer()
