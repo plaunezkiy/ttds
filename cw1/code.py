@@ -4,14 +4,16 @@ from typing import Set
 import xml.etree.ElementTree as ET
 from typing import List
 import Stemmer
+# from nltk.stem import PorterStemmer
 import os
 
 alphanum = r"[a-zA-Z0-9_]*"
 non_alphanum = r"[^a-zA-Z0-9_]"
 
 stemmer = Stemmer.Stemmer('english')
+# stemmer = PorterStemmer()
 # load stopwords
-with open("./data/stopwords.txt", "r") as stopwords_file:
+with open("stopwords.txt", "r") as stopwords_file:
     stopwords = set(stopwords_file.read().strip().split("\n"))
 
 
@@ -35,14 +37,6 @@ def remove_stopwords(collection: List[str]) -> List[str]:
 def normalize(collection: List[str]) -> List[str]:
     return list(map(lambda token: stemmer.stemWord(token), collection))
 
-"""
-TODO: think about a more efficient way of storing and loading
-the serialized index. Currently reading line by line from a txt file
-Supposedely efficient in terms of memory for file IO
-
-TODO: Implement delta encoding for more memory efficient term-in-doc indexing
-"""
-
 
 class Document(object):    
     """
@@ -59,7 +53,7 @@ class InvertedFrequencyIndex:
     processed tokens onto the relevant documents with positions
     """
     # `and:` - extracts 'and' before colon
-    term_regex = re.compile(r"(.*?):")
+    term_regex = re.compile(r"(.*?):(.*)")
     # `    4: 1,2,3` - splits into groups: (group_1: '4'), (group_2: '1,2,3')
     doc_positions_regex = re.compile("\t(.*?):\s(.*)")
     
@@ -72,7 +66,13 @@ class InvertedFrequencyIndex:
         self.terms = {}
         self.text_processing_pipeline = [tokenize_text, remove_stopwords, normalize]
     
+    ### Indexing
+
     def add_document_to_index(self, document_id, text):
+        """
+        Processesses the text into a list of normalized term tokens
+        which are used as dict keys to add a record of occurrence
+        """
         tokens = text
         for preprocessing_func in self.text_processing_pipeline:
             tokens = preprocessing_func(tokens)
@@ -94,6 +94,73 @@ class InvertedFrequencyIndex:
             self.terms[term] = {
                 document_id: [position]
             }
+    
+    def load_and_index_collection(self, collection_path):
+        """
+        Loads and indexes a collection of documents from XML file
+        """
+        tree = ET.parse(collection_path)
+        root = tree.getroot()
+        docs = [Document(child) for child in root]
+        for doc in docs:
+            if not doc.docno or not doc.text:
+                print(f"Error, missing data for the entry", doc.docno, doc.text[:10])
+                continue
+            document_content = doc.headline + doc.text
+            self.add_document_to_index(int(doc.docno), document_content)
+
+    def save_to_file(self, index_path):
+        """
+        Stores the index in the serializable format
+        
+        ```
+        token:
+            4: 1,2,3
+        ```
+        """
+        with open(index_path, "w") as index_file:
+            for term in self.terms:
+                doc_freqs = "\n".join(
+                    [
+                        f"\t{doc_id}: {','.join(str(pos) for pos in self.terms[term][doc_id])}" for doc_id in self.terms[term]
+                    ]
+                )
+                df = self.get_df(term)
+                term_index_data = f"{term}:{df}\n{doc_freqs}\n\n"
+                index_file.write(term_index_data)
+    
+    def load_from_file(self, index_path):
+        """
+        Loads from the serialized index file line by line (for efficiency)
+        """
+        with open(index_path, "r") as index_file:
+            term = None
+            df = 0
+            for index_line in index_file:
+                # if the only char on the line is a newline - it is a splitter
+                if index_line == "\n":
+                    # check df in file matches the index
+                    assert df == self.get_df(term)
+                    # switch to new term
+                    term = None
+                    continue
+                # if the term is not set, we are starting the new entry
+                # and thus it needs to be set
+                if term == None:
+                    result = self.term_regex.findall(index_line)[0]
+                    term = result[0]
+                    df = int(result[1])
+                    # could also get df out and check for integrity at the end
+                    self.terms[term] = {}
+                    continue
+                # otherwise, it is a document_id with positions
+                res = self.doc_positions_regex.search(index_line)
+                doc_id = int(res.group(1))
+                positions = list(map(int, res.group(2).split(",")))
+                self.doc_ids.add(doc_id)
+                self.terms[term][doc_id] = positions
+
+    ### 
     
     def check_term_in_document(self, doc_id, term) -> bool:
         """
@@ -143,6 +210,9 @@ class InvertedFrequencyIndex:
         return docs
     
     def check_terms_close_in_document(self, doc_id, term1, term2, n) -> bool:
+        """
+        Checks if two terms appear within a given distance in a document
+        """
         # term occurrences in a document
         i1 = self.terms.get(term1, {}).get(doc_id, [])
         i2 = self.terms.get(term2, {}).get(doc_id, [])
@@ -179,6 +249,12 @@ class InvertedFrequencyIndex:
         return relevant_doc_ids
     
     def evaluate_expression(self, exp):
+        """
+        Evaluates a logical expression and returns a list of documents
+        that satisfy the expression
+        Provides handling for proximity search, phrase search (exact/nonexact)
+        Handles NOT negations too
+        """
         negated = False
         docs = set()
         if "NOT" in exp:
@@ -186,7 +262,7 @@ class InvertedFrequencyIndex:
             exp = re.findall(r"NOT\s?(.*)", exp)[0]
         # #int(str,str)
         proximity_regex = r"#(\d+)\((\w+),\s?(\w+)\)"
-        # "str"
+        # "string"
         phrase_regex = r"\"(.*)\""
         if re.search(proximity_regex, exp):
             n, t1, t2 = re.findall(proximity_regex, exp)[0]
@@ -208,10 +284,14 @@ class InvertedFrequencyIndex:
         return docs
 
     def search(self, query):
+        """
+        Entry point to search
+        Handles logical AND/OR between subquery expressions
+        evaluates and combine individual results
+        """
         # Boolean search (AND, OR, NOT)
         # phrase search ("exact match")
         # proximity search pos(term2) – pos(term1) < |w| -> #5(term1,term2)
-        # ranked IR search based on TFIDF
         operator = None
         # split on AND/OR, if present, otherwise just find
         # Left AND/OR Right
@@ -225,7 +305,7 @@ class InvertedFrequencyIndex:
             return sorted(self.evaluate_expression(query))
         return sorted(operator(*map(self.evaluate_expression, query)))
 
-    def get_tf(self, term, doc_id):
+    def get_tf(self, term, doc_id) -> int:
         """
         Calculates the term frequency in a document
         ie how many times term appeared in a document
@@ -233,7 +313,7 @@ class InvertedFrequencyIndex:
         fs = self.terms.get(term, {}).get(doc_id, [])
         return len(fs)
     
-    def get_df(self, term):
+    def get_df(self, term) -> int:
         """
         Calculates how many documents the term appeared in.
         """
@@ -241,6 +321,10 @@ class InvertedFrequencyIndex:
         return len(docs.keys())
     
     def ranked_retrieval(self, query):
+        """
+        Retrieves documents that have at least one of the query tokens
+        and sorts them by a tfidf score over the query
+        """
         # preprocess the query
         query_tokens = query
         for preproc_func in self.text_processing_pipeline:
@@ -261,84 +345,30 @@ class InvertedFrequencyIndex:
                     idf = log10(len(self.doc_ids) / self.get_df(term))
                     w = (1 + log10(tf)) * idf
                 doc_score += w
-            ranked_docs.append((doc_id, doc_score))
+            ranked_docs.append((doc_id, round(doc_score, 4)))
         # 
-        return ranked_docs
-        # sorted
-        return sorted(ranked_docs, key=lambda t: t[1], reverse=True)
-
-    def load_and_index_collection(self, collection_path):
-        """
-        Loads and indexes a collection of documents from XML file
-        """
-        tree = ET.parse(collection_path)
-        root = tree.getroot()
-        docs = [Document(child) for child in root]
-        for doc in docs:
-            if not doc.docno or not doc.text:
-                print(f"Error, missing data for the entry", doc.docno, doc.text[:10])
-                continue
-            document_content = doc.headline + doc.text
-            self.add_document_to_index(int(doc.docno), document_content)
-
-    def save_to_file(self, index_path):
-        """
-        Stores the index in the serializable format
-        
-        ```
-        token:
-            4: 1,2,3
-        ```
-        """
-        with open(index_path, "w") as index_file:
-            for term in self.terms:
-                doc_freqs = "\n".join(
-                    [
-                        f"\t{doc_id}: {','.join(str(pos) for pos in self.terms[term][doc_id])}" for doc_id in self.terms[term]
-                    ]
-                )
-                term_index_data = f"{term}:\n{doc_freqs}\n\n"
-                index_file.write(term_index_data)
-    
-    def load_from_file(self, index_path):
-        """
-        Loads from the serialized index file line by line (for efficiency)
-        """
-        with open(index_path, "r") as index_file:
-            term = None
-            for index_line in index_file:
-                # if the only char on the line is a newline - it is a splitter
-                if index_line == "\n":
-                    # switch to new term
-                    term = None
-                    continue
-                # if the term is not set, we are starting the new entry
-                # and thus it needs to be set
-                if term == None:
-                    result = self.term_regex.search(index_line)
-                    term = result.group(1)
-                    self.terms[term] = {}
-                    continue
-                # otherwise, it is a document_id with positions
-                res = self.doc_positions_regex.search(index_line)
-                doc_id = int(res.group(1))
-                positions = map(int, res.group(2).split(","))
-                self.doc_ids.add(doc_id)
-                self.terms[term][doc_id] = positions
+        # sorted in descending and limited to 150 (top 150 highest)
+        return sorted(ranked_docs, key=lambda t: t[1], reverse=True)[:150]
 
 
 if __name__ == "__main__":
     basedir = os.getcwd()
-    basedir = os.path.join(os.getcwd(), "cw1")
-    print(basedir)
-
+    # basedir = os.path.join(os.getcwd(), "cw1")
+    index_file_path = os.path.join(basedir, "index.txt")
+    collection_path = os.path.join(basedir, "trec.5000.xml")
+    
     print("Initalizing the index")
     index = InvertedFrequencyIndex()
-    index.load_and_index_collection("cw1/trec.5000.xml")
-    
-    # generate index.txt
-    print("Save the index")
-    index.save_to_file("cw1/index.txt")
+
+    if os.path.exists(index_file_path):
+        print("Loading from serialized")
+        index.load_from_file(index_file_path)
+    else:
+        print("No serialized index found, indexing collection")
+        index.load_and_index_collection(collection_path)
+        # generate index.txt
+        print("Saving the index")
+        index.save_to_file(index_file_path)
     
     # generate results.boolean.txt
     print("Running boolean queries")
@@ -354,7 +384,7 @@ if __name__ == "__main__":
     # generate results.ranked.txt
     print("Running ranked queries")
     with open(os.path.join(basedir, "queries.ranked.txt"), "r") as q_file:
-        with open(os.path.join(basedir, "/results.ranked.txt"), "w") as o_file:
+        with open(os.path.join(basedir, "results.ranked.txt"), "w") as o_file:
             for query_data in q_file:
                 query_data = query_data.strip()
                 q_number, query = query_data.split(" ", 1)
