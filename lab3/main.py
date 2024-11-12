@@ -21,7 +21,6 @@ def load_collection(collection_name="trec.sample.xml"):
 
 if __name__ == "__main__":
     load_collection("trec.sample.xml")
-
     with open("lab3/ranked.queries.txt", "r") as q_file:
         with open("lab3/tfidf.results.txt", "w") as o_file:
             for query_data in q_file:
