@@ -79,7 +79,7 @@ class IR_EVAL:
         Load the system results and query relevant data
         """
         # load system results
-        data = csv.reader(open("data/cw2/system_results.csv"), delimiter=",")
+        data = csv.reader(open("data/collections/system_results.csv"), delimiter=",")
         next(data, None) # skip the headers
         for row in data:
             sys_n, query_n, doc_n, rank, score = row
@@ -93,7 +93,7 @@ class IR_EVAL:
                 heapq.heapify(docs)
                 self.systems[sys_n][query_n] = docs
         # load query relevant data
-        data = csv.reader(open("data/cw2/qrels.csv"), delimiter=",")
+        data = csv.reader(open("data/collections/qrels.csv"), delimiter=",")
         next(data, None) # skip the headers
         for row in data:
             query_n, doc_n, relevance = row
