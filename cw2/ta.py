@@ -19,6 +19,7 @@ class TextAnalyser:
     def calculate_MI(self):
         """
         Calculate Mutual Information for each term in each corpus
+        p()
         Returns a dictionary mapping corpus names to lists of (term, MI_score) tuples.
         """
         results = {}
