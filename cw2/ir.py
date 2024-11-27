@@ -143,45 +143,34 @@ class IR_EVAL:
         """
         docs = self.systems[sys_n][query_n]
         precision = 0
-        for k in range(1, len(docs)):
-            relevance = self.qrel[query_n].get(docs[k].doc_id, 0) # this or 1?
-            precision += self.precision(sys_n, query_n, k) * relevance
+        for k in range(1, len(docs)+1):
+            p_k = self.precision(sys_n, query_n, k)
+            if docs[k-1].doc_id in self.qrel[query_n]:
+                precision += p_k
         return precision / len(self.qrel[query_n])
 
-    def DCG(self, sys_n, query_n, N):
+    def DCG(self, sys_n, query_n, N, ideal=False):
         """
         Calculate the Discounted Cumulative Gain at cutoff N
         DCG@N = rel(1) + sum((rel(i) / log2(i)) for i in 2 to N)
+        :param ideal: if True, calculate the iDCG, else DCG
         """
-        # get the relevance of the first document
-        doc1_id = self.systems[sys_n][query_n][0].doc_id
-        rel1 = self.qrel[query_n].get(doc1_id, 0)
+        # get the relevance scores for the top N documents
+        docs = self.systems[sys_n][query_n][:N]
+        rels = [self.qrel[query_n].get(doc.doc_id, 0) for doc in docs]
+        if ideal:
+            # ALL relevant come first in order of relevance
+            # the rest (N - n_rel) have 0 relevance score
+            docs = [doc for doc in self.qrel[query_n]] + [*['-1'] * (N - len(self.qrel[query_n]))]
+            docs = sorted(docs, key=lambda x: self.qrel[query_n].get(x, 0), reverse=True)
+            rels = [self.qrel[query_n].get(doc, 0) for doc in docs]
+        rel1 = rels[0]
         # calculate the DCG
         DCG = rel1
-        for i in range(2, N):
-            doc_id = self.systems[sys_n][query_n][i].doc_id
-            rel = self.qrel[query_n].get(doc_id, 0)
-            DCG += rel / log2(i)
+        for i in range(2, N+1):
+            rel = rels[i-1]
+            DCG += (rel / log2(i))
         return DCG
-    
-    def iDCG(self, sys_n, query_n, N):
-        """
-        Calculate the Ideal Discounted Cumulative Gain at cutoff N
-        Doc ranking first sorted in order of relevance
-        """
-        docs = self.systems[sys_n][query_n]
-        # sort the documents by relevance
-        docs = sorted(docs, key=lambda x: x.score, reverse=True)
-        # get the relevance of the first document
-        doc1_id = docs[0].doc_id
-        rel1 = self.qrel[query_n].get(doc1_id, 0)
-        # calculate the iDCG
-        iDCG = rel1
-        for i in range(2, N):
-            doc_id = docs[i].doc_id
-            rel = self.qrel[query_n].get(doc_id, 0)
-            iDCG += rel / log2(i)
-        return iDCG
 
     def nDCG(self, sys_n, query_n, N):
         """
@@ -190,12 +179,12 @@ class IR_EVAL:
         DCG@N = rel(1) + sum((rel(i) / log2(i)) for i in 2 to N) (actual ranking)
         iDCG@N - Ideal DCG at cutoff N (ALL relevant come first in order of relevance)
         """
-        DCGN = self.DCG(sys_n, query_n, N)
-        iDCGN = self.iDCG(sys_n, query_n, N)
+        DCG = self.DCG(sys_n, query_n, N)
+        iDCG = self.DCG(sys_n, query_n, N, ideal=True)
         # avoid division by zero
-        if iDCGN == 0:
+        if iDCG == 0:
             return 0
-        return DCGN / iDCGN
+        return DCG / iDCG
 
 
 if __name__ == "__main__":
