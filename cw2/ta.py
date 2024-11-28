@@ -15,15 +15,11 @@ class TextAnalyser:
                 corpus, verse = row
                 tokens = process_tokens(tokenize_text(verse))
                 self.corpora[corpus] = self.corpora.get(corpus, []) + [tokens]
+        self.precompute_N()
     
-    def calculate_MI(self):
-        """
-        Calculate Mutual Information for each term in each corpus
-        p()
-        Returns a dictionary mapping corpus names to lists of (term, MI_score) tuples.
-        """
-        results = {}
+    def precompute_N(self):
         corpus_tokens = {}
+        token_index = {}
         # total docs
         N = 0
         
@@ -34,60 +30,59 @@ class TextAnalyser:
             
             for doc in documents:
                 for term in doc:
+                    token_index[term] = token_index.get(term, {})
+                    token_index[term][corpus] = token_index[term].get(corpus, 0) + 1
                     corpus_tokens[corpus].add(term)
+        self.corpus_tokens = corpus_tokens
+        # docs that both contain the term AND are in the corpus
+        n11 = lambda term: token_index[term].get(corpus, 0)
+        # docs that contain the term but are not in the corpus
+        n10 = lambda term: sum([sum([token_index[term].get(_corp, 0) if _corp != corpus else 0]) for _corp in self.corpora.keys()])
+        # docs that don't contain the term but are in the corpus
+        n01 = lambda term: len(self.corpora[corpus]) - n11(term)
+        # all docs that contain the term
+        n1_ = lambda term: sum([sum([token_index[term].get(_corp, 0)]) for _corp in self.corpora.keys()])
+        # all docs that are in the corpus
+        n_1 = lambda term: len(self.corpora[corpus])
+        # docs that don't contain the term
+        n0_ = lambda term: N - n1_(term)
+        # docs that are not in the corpus
+        n_0 = lambda term: N - n_1(term)
+        # docs that don't contain the term and are not in the corpus
+        n00 = lambda term: N - n_1(term) - n10(term)
+        #
+        self.n11 = n11
+        self.n10 = n10
+        self.n01 = n01
+        self.n1_ = n1_
+        self.n_1 = n_1
+        self.n0_ = n0_
+        self.n_0 = n_0
+        self.n00 = n00
+        self.N = N
+
+    def calculate_MI(self):
+        """
+        Calculate Mutual Information for each term in each corpus
+        p()
+        Returns a dictionary mapping corpus names to lists of (term, MI_score) tuples.
+        """
+        results = {}
         
         # Calculate MI for each term in each corpus
         for corpus in self.corpora.keys():
             results[corpus] = []
-            for term in corpus_tokens[corpus]:
+            for term in self.corpus_tokens[corpus]:
                 MI = 0
-                # docs that both contain the term AND are in the corpus
-                n11 = sum([1 for doc in self.corpora[corpus] if term in doc])
-                # docs that contain the term but are not in the corpus
-                n10 = sum(
-                    [
-                        sum(
-                            [1 for doc in corpus_docs if term in doc and _corpus != corpus]
-                        ) for _corpus, corpus_docs in self.corpora.items()
-                    ]
-                )
-                # docs that don't contain the term but are in the corpus
-                n01 = sum([1 for doc in self.corpora[corpus] if term not in doc])
-                # all docs that contain the term
-                n1_ = sum(
-                    [
-                        sum(
-                            [1 for doc in corpus_docs if term in doc]
-                        ) for corpus_docs in self.corpora.values()
-                    ]
-                )
-                # all docs that are in the corpus
-                # n_1 = len(self.corpora[corpus])
-                n_1 = sum([1 for doc in self.corpora[corpus]] )
-                # docs that don't contain the term
-                n0_ = sum(
-                    [
-                        sum(
-                            [1 for doc in corpus_docs if term not in doc]
-                        ) for corpus_docs in self.corpora.values()
-                    ]
-                )
-                # docs that are not in the corpus
-                n_0 = sum(
-                    [
-                        sum([1 for doc in corpus_docs if _corp != corpus] )
-                        for _corp, corpus_docs in self.corpora.items()
-                    ] 
-                )
-                # docs that don't contain the term and are not in the corpus
-                n00 = sum(
-                    [
-                        sum(
-                            [1 for doc in corpus_docs if term not in doc and _corpus != corpus]
-                        ) for _corpus, corpus_docs in self.corpora.items()
-                    ]
-                )
-                
+                n11 = self.n11(term)
+                n10 = self.n10(term)
+                n01 = self.n01(term)
+                n1_ = self.n1_(term)
+                n_1 = self.n_1(term)
+                n0_ = self.n0_(term)
+                n_0 = self.n_0(term)
+                n00 = self.n00(term)
+                N = self.N
                 # Calculate MI score
                 for a, b, c in ((n11, n1_, n_1), (n01, n0_, n_1), (n10, n1_, n_0), (n00, n0_, n_0)):
                     try:
