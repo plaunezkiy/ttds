@@ -1,6 +1,7 @@
 import csv
 import heapq
 from math import log2
+import scipy.stats as stats
 
 
 class RankedDocument:
@@ -33,7 +34,7 @@ class IR_EVAL:
         with open("data/cw2/ir_eval.csv", "w", newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["system_number", "query_number", "P@10", "R@50", "r-precision", "AP", "nDCG@10", "nDCG@20"])
-            
+            system_eval_data = {}
             # calculate the metrics for each system and query
             for sys_n, queries in self.systems.items():
                 ps = []
@@ -64,7 +65,7 @@ class IR_EVAL:
                     nDCG_20s.append(nDCG_20)
                     # save the row of results
                     writer.writerow([sys_n, query_n, P_10, R_50, r_P, AP, nDCG_10, nDCG_20])
-
+                system_eval_data[sys_n] = [ps, rs, r_ps, aps, nDCG_10s, nDCG_20s]
                 # calculate mean metrics
                 means = []
                 for metric in [ps, rs, r_ps, aps, nDCG_10s, nDCG_20s]:
@@ -72,6 +73,7 @@ class IR_EVAL:
                     means.append(round(mean, 3))
                 # save the results
                 writer.writerow([sys_n, "mean", *means])
+            return system_eval_data
 
 
     def load_data(self):
@@ -186,9 +188,28 @@ class IR_EVAL:
             return 0
         return DCG / iDCG
 
+    def find_best_system(self, eval_data):
+        """
+        Find whether the most averaging system is the best
+        for each metric
+        """
+        for i, metric in enumerate(["P@10", "R@50", "r-precision", "AP", "nDCG@10", "nDCG@20"]):
+            all_means = [round(sum(data[i])/len(data[i]), 3) for data in eval_data.values()]
+            print()
+            second_best_sys = [sys_n for i,sys_n in enumerate(eval_data.keys()) if all_means[i] == sorted(set(all_means))[-2]]
+            best_sys = [sys_n for i, sys_n in enumerate(eval_data.keys()) if all_means[i] == max(all_means)]
+            for b_sys_n in best_sys:
+                for sb_sys_n in second_best_sys:
+                    # t test
+                    result = stats.ttest_rel(eval_data[b_sys_n][i], eval_data[sb_sys_n][i])
+                    print(f"{metric} - {b_sys_n} vs {sb_sys_n}: {round(result.pvalue, 3)}")
+                    if result.pvalue <= 0.05:
+                        print(f"{b_sys_n} is better than {sb_sys_n} for {metric}")
+
 
 if __name__ == "__main__":
     # part 1
     ir_eval = IR_EVAL()
     ir_eval.load_data()
-    ir_eval.eval()
+    eval_data = ir_eval.eval()
+    ir_eval.find_best_system(eval_data)
